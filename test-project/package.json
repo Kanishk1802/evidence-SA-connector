@@ -25,7 +25,12 @@
     "@evidence-dev/postgres": "^1.0.1",
     "@evidence-dev/snowflake": "^1.0.1",
     "@evidence-dev/sqlite": "^2.0.1",
-    "@evidence-dev/trino": "^1.0.1"
+    "@evidence-dev/trino": "^1.0.1",
+    "csv-parse": "^5.5.6",
+    "evidence-connector-simple-analytics": "file:../datasource",
+    "fs": "^0.0.1-security",
+    "js-yaml": "^4.1.0",
+    "yaml": "^2.4.5"
   },
   "overrides": {
     "jsonwebtoken": "9.0.0",

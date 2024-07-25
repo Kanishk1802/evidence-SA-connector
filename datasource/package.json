@@ -1,6 +1,6 @@
 {
-  "name": "evidence-connector-my-datasource",
-  "version": "1.0.0",
+  "name": "evidence-connector-simple-analytics",
+  "version": "0.0.1",
   "description": "",
   "main": "src/index.js",
   "type": "module",
@@ -8,21 +8,26 @@
     "test": "vitest --run",
     "check": "tsc --noEmit -p tsconfig.json"
   },
-  "author": "",
-  "license": "ISC",
-  "devDependencies": {
-    "@evidence-dev/plugin-connector": "^2.0.4",
-    "typescript": "^5.3.3",
-    "vitest": "^1.2.0"
-  },
-  "dependencies": {
-    "@evidence-dev/db-commons": "^1.0.1"
-  },
-  "evidence": {
-    "datasources": []
-  },
+  "author": "Kanishk Dutta",
+  "license": "MIT",
   "keywords": [
     "evidence",
     "evidence-datasource"
-  ]
+  ],
+  "dependencies": {
+    "@evidence-dev/db-commons": "^1.0.5",
+    "axios": "^1.7.2",
+    "csv-parse": "^5.5.6",
+    "csvtojson": "^2.0.10",
+    "fs": "^0.0.1-security",
+    "js-yaml": "^4.1.0",
+    "tempy": "^3.1.0",
+    "yaml": "^2.4.5"
+  },
+  "evidence": {
+    "datasources": [
+      "simple-analytics"
+    ],
+    "icon": "simpleanalytics"
+  }
 }

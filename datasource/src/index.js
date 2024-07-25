@@ -1,112 +1,206 @@
+import { default as axios } from "axios";
+import { parse } from "csv-parse/browser/esm";
+import { EvidenceType, TypeFidelity } from "@evidence-dev/db-commons";
+import { temporaryFile } from "tempy";
+import yaml from "js-yaml";
+import fs from "fs";
+
+
 /**
- * This type describes the options that your connector expects to recieve
- * This could include username + password, host + port, etc
  * @typedef {Object} ConnectorOptions
- * @property {string} SomeOption
- */
-
-import { EvidenceType } from "@evidence-dev/db-commons";
-
-/**
- * @see https://docs.evidence.dev/plugins/creating-a-plugin/datasources#options-specification
- * @see https://github.com/evidence-dev/evidence/blob/main/packages/postgres/index.cjs#L316
+ * @property {string} UserID - The user ID for the API.
+ * @property {string} apiKey - The API key for the API.
  */
 export const options = {
-  SomeOption: {
-    title: "Some Option",
-    description:
-      "This object defines how SomeOption should be displayed and configured in the Settings UI",
-    type: "string", // options: 'string' | 'number' | 'boolean' | 'select' | 'file'
+  UserID: {
+    title: "User Id",
+    type: "string",
+    description: "Simple Analytics UserID",
+    required: true,
+    secret: true,
   },
+  apiKey: {
+    title: "API Key",
+    type: "string",
+    description: "Simple Analytics API Key",
+    required: true,
+    secret: true,
+  },
+  
+};
+
+export default { options };
+
+
+/** @type {import("@evidence-dev/db-commons").getRunner<ConnectorOptions>} */
+export const getRunner = () => {
+  throw new Error(
+    "Simple Analytics connector does not support getRunner."
+  );
 };
 
 /**
- * Implementing this function creates a "simple" connector
- *
- * Each file in the source directory will be passed to this function, and it will return
- * either an array, or an async generator {@see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/async_function*}
- * that contains the query results
- *
- * @see https://docs.evidence.dev/plugins/creating-a-plugin/datasources#simple-interface-arrays
- * @type {import("@evidence-dev/db-commons").GetRunner<ConnectorOptions>}
+ * @type {import("@evidence-dev/db-commons").ProcessSource<ConnectorOptions>}
  */
-export const getRunner = (options) => {
-  console.debug(`SomeOption = ${options.SomeOption}`);
+export async function* processSource(options, sourceFiles, utilFuncs) {
+  const { UserID, apiKey } = options;
+  console.log(options);
+  if (!("connection.yaml" in sourceFiles)) {
+    throw new Error("connection.yaml is missing; this is odd");
+  }
+  if (typeof sourceFiles["connection.yaml"] !== "function") {
+    throw new Error("connection.yaml is a directory; this is odd");
+  }
 
-  // This function will be called for EVERY file in the sources directory
-  // If you are expecting a specific file type (e.g. SQL files), make sure to filter
-  // to exclude others.
+  const connYaml = await sourceFiles["connection.yaml"]();
+  const { exports } = yaml.load(connYaml);
 
-  // If you are using some local database file (e.g. a sqlite or duckdb file)
-  // You may also need to filter that file out as well
-  return async (queryText, queryPath) => {
-    // Example output
-    const output = {
-      rows: [
-        { someInt: 1, someString: "string" },
-        { someInt: 2, someString: "string2" },
-      ],
-      columnTypes: [
-        {
-          name: "someInt",
-          evidenceType: EvidenceType.NUMBER,
-          typeFidelity: "inferred",
-        },
-        {
-          name: "someString",
-          evidenceType: EvidenceType.STRING,
-          typeFidelity: "inferred",
-        },
-      ],
-      expectedRowCount: 2,
-    };
 
-    throw new Error("Query Runner has not yet been implemented");
-  };
-};
 
-// Uncomment to use the advanced source interface
-// This uses the `yield` keyword, and returns the same type as getRunner, but with an added `name` and `content` field (content is used for caching)
-// sourceFiles provides an easy way to read the source directory to check for / iterate through files
-// /** @type {import("@evidence-dev/db-commons").ProcessSource<ConnectorOptions>} */
-// export async function* processSource(options, sourceFiles, utilFuncs) {
-//   yield {
-//     title: "some_demo_table",
-//     content: "SELECT * FROM some_demo_table", // This is ONLY used for caching
-//     rows: [], // rows can be an array
-//     columnTypes: [
-//       {
-//         name: "someInt",
-//         evidenceType: EvidenceType.NUMBER,
-//         typeFidelity: "inferred",
-//       },
-//     ],
-//   };
-//   yield {
-//     title: "some_demo_table",
-//     content: "SELECT * FROM some_demo_table", // This is ONLY used for caching
-//     rows: async function* () {}, // rows can be a generator function for returning batches of results (e.g. if an API is paginated, or database supports cursors)
-//     columnTypes: [
-//       {
-//         name: "someInt",
-//         evidenceType: EvidenceType.NUMBER,
-//         typeFidelity: "inferred",
-//       },
-//     ],
-//   };
+  for (const [tableName, exportObj] of Object.entries(exports)) {
+    let { URL: apiUrl, StartDate, EndDate } = exportObj;
+    
+    // Parse the existing URL
+    const urlObj = new URL(apiUrl);
+    const params = new URLSearchParams(urlObj.search);
 
-//  throw new Error("Process Source has not yet been implemented");
-// }
+    // Update the start and end dates
+    params.set('start', StartDate);
+    //console.log(StartDate);
+    params.set('end', EndDate);
+    urlObj.search = params.toString();
+    apiUrl = urlObj.toString();
+    console.log(apiUrl);
+   
+    
 
-/**
- * Implementing this function creates an "advanced" connector
- *
- *
- * @see https://docs.evidence.dev/plugins/creating-a-plugin/datasources#advanced-interface-generator-functions
- * @type {import("@evidence-dev/db-commons").GetRunner<ConnectorOptions>}
- */
+    try {
+      const response = await axios.get(apiUrl, {
+        headers: {
+          'User-Id': UserID,
+          'Api-Key': apiKey
+        }
+      });
+
+      let data = response.data;
+      console.log(data)
+      // Check if the data is a CSV string
+      if (typeof data === 'string') {
+        data = await new Promise((resolve, reject) => {
+          parse(data, {
+            columns: true,
+            skip_empty_lines: true
+          }, (err, output) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve(output);
+            }
+          });
+        });
+      }
+      //console.log(typeof data);
+      if (!Array.isArray(data)) {
+        throw new Error('API response is not an array or valid CSV');
+      }
+
+  
+
+      if (data.length === 0) {
+        throw new Error('No data returned from the API');
+      }
+
+      const rows = data.map((row) => {
+        const transformedRow = {};
+        for (const [key, value] of Object.entries(row)) {
+          let parsedValue = value;
+          if (typeof value === 'string') {
+            if (value.toLowerCase() === 'true' || value.toLowerCase() === 'false') {
+              parsedValue = value.toLowerCase() === 'true';
+            } else if (!isNaN(Number(value))) {
+              parsedValue = Number(value);
+            } else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6} UTC$/.test(value)) {
+              parsedValue = new Date(value.replace(' UTC', 'Z'));
+            }
+          }
+          transformedRow[key.toLowerCase()] = parsedValue;
+        }
+        return transformedRow;
+      });
+
+      const columnTypes = Object.keys(rows[0]).map((key) => {
+        const evidenceType = inferValueType(rows[0][key]);
+        return {
+          name: key,
+          evidenceType,
+          typeFidelity: 'inferred',
+        };
+      });
+
+      yield {
+        rows: rows,
+        columnTypes: columnTypes,
+        expectedRowCount: rows.length,
+        name: tableName,
+        content: JSON.stringify(options),
+      };
+    } catch (error) {
+      console.error(`Error fetching data for ${tableName}:`, error.message);
+      console.error(`Full error details:`, error);
+      throw new Error(`Failed to fetch data for ${tableName}: ${error.message}`);
+    }
+  }
+}
+
+
+
+function inferValueType(columnValue) {
+  if (typeof columnValue === 'number') {
+    return EvidenceType.NUMBER;
+  } else if (typeof columnValue === 'boolean') {
+    return EvidenceType.BOOLEAN;
+  } else if (typeof columnValue === 'string') {
+    let result = EvidenceType.STRING;
+    if (columnValue && (columnValue.match(/-/g) || []).length === 2) {
+      let testDateStr = columnValue;
+      if (!columnValue.includes(':')) {
+        testDateStr = columnValue + 'T00:00';
+      }
+      try {
+        let testDate = new Date(testDateStr);
+        if (testDate.toLocaleString().length > 0) {
+          let numCheck = Number.parseInt(testDate.toLocaleString().substring(0, 1));
+          if (numCheck != null && !isNaN(numCheck)) {
+            result = EvidenceType.DATE;
+          }
+        }
+      } catch (err) {
+        //ignore
+      }
+    }
+    return result;
+  } else if (columnValue instanceof Date) {
+    return EvidenceType.DATE;
+  } else {
+    return EvidenceType.STRING;
+  }
+}
 
 /** @type {import("@evidence-dev/db-commons").ConnectionTester<ConnectorOptions>} */
-export const testConnection = async (opts) => {
-  throw new Error("Connection test has not yet been implemented");
+export const testConnection = async (options) => {
+  try {
+    const response = await axios.get('https://dashboard.simpleanalytics.com/api/users/me', {
+      headers: {
+        'User-Id': options.UserID,
+        'Api-Key': options.apiKey
+      }
+    });
+    return true;
+  } catch (error) {
+    console.error("Connection test failed:", error);
+  }
 };
+
+
+
+
