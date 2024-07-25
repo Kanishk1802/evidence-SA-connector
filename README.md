@@ -35,7 +35,7 @@ and press 'Confirm Changes'
       -- connection.yaml
 ```
 
-3. Within your connection.yaml specific the tables you want with the URL and staring/end dates for your
+3. Within your connection.yaml specify the tables you want with the URL and staring/end dates for your
 data pull (Ensure you use the CSV format link when getting your API URL from Simple Analytics)
 
 ```
