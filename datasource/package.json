@@ -27,7 +27,12 @@
   "evidence": {
     "datasources": [
       "simple-analytics"
-    ],
-    "icon": "simpleanalytics"
+    ]
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.9",
+    "@babel/preset-env": "^7.24.8",
+    "@babel/preset-react": "^7.24.7",
+    "babel-loader": "^9.1.3"
   }
 }

@@ -44,7 +44,6 @@ export const getRunner = () => {
  */
 export async function* processSource(options, sourceFiles, utilFuncs) {
   const { UserID, apiKey } = options;
-  console.log(options);
   if (!("connection.yaml" in sourceFiles)) {
     throw new Error("connection.yaml is missing; this is odd");
   }
@@ -55,8 +54,6 @@ export async function* processSource(options, sourceFiles, utilFuncs) {
   const connYaml = await sourceFiles["connection.yaml"]();
   const { exports } = yaml.load(connYaml);
 
-
-
   for (const [tableName, exportObj] of Object.entries(exports)) {
     let { URL: apiUrl, StartDate, EndDate } = exportObj;
     
@@ -65,14 +62,18 @@ export async function* processSource(options, sourceFiles, utilFuncs) {
     const params = new URLSearchParams(urlObj.search);
 
     // Update the start and end dates
-    params.set('start', StartDate);
-    //console.log(StartDate);
-    params.set('end', EndDate);
+    if (StartDate) {
+      params.set('start', StartDate);
+    } else {
+      params.delete('start');
+    }
+    if (EndDate) {
+      params.set('end', EndDate);
+    } else {
+      params.delete('end');
+    }
     urlObj.search = params.toString();
     apiUrl = urlObj.toString();
-    console.log(apiUrl);
-   
-    
 
     try {
       const response = await axios.get(apiUrl, {
@@ -83,7 +84,6 @@ export async function* processSource(options, sourceFiles, utilFuncs) {
       });
 
       let data = response.data;
-      console.log(data)
       // Check if the data is a CSV string
       if (typeof data === 'string') {
         data = await new Promise((resolve, reject) => {
@@ -99,12 +99,9 @@ export async function* processSource(options, sourceFiles, utilFuncs) {
           });
         });
       }
-      //console.log(typeof data);
       if (!Array.isArray(data)) {
         throw new Error('API response is not an array or valid CSV');
       }
-
-  
 
       if (data.length === 0) {
         throw new Error('No data returned from the API');
@@ -121,6 +118,8 @@ export async function* processSource(options, sourceFiles, utilFuncs) {
               parsedValue = Number(value);
             } else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6} UTC$/.test(value)) {
               parsedValue = new Date(value.replace(' UTC', 'Z'));
+            } else if (!isNaN(Date.parse(value))) {
+              parsedValue = new Date(value);
             }
           }
           transformedRow[key.toLowerCase()] = parsedValue;
@@ -168,14 +167,11 @@ function inferValueType(columnValue) {
       }
       try {
         let testDate = new Date(testDateStr);
-        if (testDate.toLocaleString().length > 0) {
-          let numCheck = Number.parseInt(testDate.toLocaleString().substring(0, 1));
-          if (numCheck != null && !isNaN(numCheck)) {
-            result = EvidenceType.DATE;
-          }
+        if (!isNaN(testDate.getTime())) {
+          result = EvidenceType.DATE;
         }
       } catch (err) {
-        //ignore
+        // Ignore
       }
     }
     return result;
