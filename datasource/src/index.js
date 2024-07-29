@@ -56,7 +56,7 @@ export async function* processSource(options, sourceFiles, utilFuncs) {
 
   for (const [tableName, exportObj] of Object.entries(exports)) {
     let { URL: apiUrl, StartDate, EndDate } = exportObj;
-    
+
     // Parse the existing URL
     const urlObj = new URL(apiUrl);
     const params = new URLSearchParams(urlObj.search);
@@ -107,38 +107,44 @@ export async function* processSource(options, sourceFiles, utilFuncs) {
         throw new Error('No data returned from the API');
       }
 
+      // Infer column types by checking all non-null values
+      const columnTypes = {};
+      for (const row of data) {
+        for (const [key, value] of Object.entries(row)) {
+          if (value !== null && value !== undefined) {
+            const evidenceType = inferValueType(value);
+            if (!columnTypes[key] || columnTypes[key] === EvidenceType.STRING) {
+              columnTypes[key] = evidenceType;
+            }
+          }
+        }
+      }
+
       const rows = data.map((row) => {
         const transformedRow = {};
         for (const [key, value] of Object.entries(row)) {
           let parsedValue = value;
-          if (typeof value === 'string') {
-            if (value.toLowerCase() === 'true' || value.toLowerCase() === 'false') {
-              parsedValue = value.toLowerCase() === 'true';
-            } else if (!isNaN(Number(value))) {
-              parsedValue = Number(value);
-            } else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6} UTC$/.test(value)) {
-              parsedValue = new Date(value.replace(' UTC', 'Z'));
-            } else if (!isNaN(Date.parse(value))) {
-              parsedValue = new Date(value);
-            }
+          if (columnTypes[key] === EvidenceType.NUMBER) {
+            parsedValue = Number(value);
+          } else if (columnTypes[key] === EvidenceType.BOOLEAN) {
+            parsedValue = value.toLowerCase() === 'true';
+          } else if (columnTypes[key] === EvidenceType.DATE) {
+            parsedValue = new Date(value);
           }
           transformedRow[key.toLowerCase()] = parsedValue;
         }
         return transformedRow;
       });
 
-      const columnTypes = Object.keys(rows[0]).map((key) => {
-        const evidenceType = inferValueType(rows[0][key]);
-        return {
-          name: key,
-          evidenceType,
-          typeFidelity: 'inferred',
-        };
-      });
+      const columnTypesArray = Object.keys(columnTypes).map((key) => ({
+        name: key.toLowerCase(),
+        evidenceType: columnTypes[key],
+        typeFidelity: 'inferred',
+      }));
 
       yield {
         rows: rows,
-        columnTypes: columnTypes,
+        columnTypes: columnTypesArray,
         expectedRowCount: rows.length,
         name: tableName,
         content: JSON.stringify(options),
@@ -153,13 +159,28 @@ export async function* processSource(options, sourceFiles, utilFuncs) {
 
 
 
+
 function inferValueType(columnValue) {
-  if (typeof columnValue === 'number') {
+  if (columnValue === null || columnValue === undefined) {
+    return EvidenceType.STRING; // Default to STRING for null/undefined
+  } else if (typeof columnValue === 'number' && !isNaN(columnValue)) {
     return EvidenceType.NUMBER;
   } else if (typeof columnValue === 'boolean') {
     return EvidenceType.BOOLEAN;
   } else if (typeof columnValue === 'string') {
-    let result = EvidenceType.STRING;
+    // Check if the string represents a boolean
+    if (columnValue.toLowerCase() === 'true' || columnValue.toLowerCase() === 'false') {
+      return EvidenceType.BOOLEAN;
+    }
+    // Check if the string represents a number
+    if (!isNaN(Number(columnValue)) && !isNaN(parseFloat(columnValue))) {
+      // Ensure that we are not treating a number-like string as a number
+      // For example, check if the string has a leading zero or other non-numeric characters
+      if (!/^0[0-9]+$/.test(columnValue) && /^[+-]?(\d*\.)?\d+$/.test(columnValue)) {
+        return EvidenceType.NUMBER;
+      }
+    }
+    // Check if the string represents a date
     if (columnValue && (columnValue.match(/-/g) || []).length === 2) {
       let testDateStr = columnValue;
       if (!columnValue.includes(':')) {
@@ -167,20 +188,26 @@ function inferValueType(columnValue) {
       }
       try {
         let testDate = new Date(testDateStr);
-        if (!isNaN(testDate.getTime())) {
-          result = EvidenceType.DATE;
+        if (!isNaN(testDate.getTime()) && !isPotentialURL(columnValue)) {
+          return EvidenceType.DATE;
         }
       } catch (err) {
         // Ignore
       }
     }
-    return result;
-  } else if (columnValue instanceof Date) {
+    return EvidenceType.STRING;
+  } else if (columnValue instanceof Date && !isNaN(columnValue.getTime())) {
     return EvidenceType.DATE;
   } else {
     return EvidenceType.STRING;
   }
 }
+
+function isPotentialURL(value) {
+  const urlPattern = /^(https?:\/\/)?([a-zA-Z0-9.-]+)?([/\\?].*)?$/;
+  return urlPattern.test(value);
+}
+
 
 /** @type {import("@evidence-dev/db-commons").ConnectionTester<ConnectorOptions>} */
 export const testConnection = async (options) => {
