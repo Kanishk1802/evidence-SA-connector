@@ -1,6 +1,6 @@
 {
   "name": "evidence-connector-simple-analytics",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "",
   "main": "src/index.js",
   "type": "module",
@@ -19,9 +19,7 @@
     "axios": "^1.7.2",
     "csv-parse": "^5.5.6",
     "csvtojson": "^2.0.10",
-    "fs": "^0.0.1-security",
     "js-yaml": "^4.1.0",
-    "tempy": "^3.1.0",
     "yaml": "^2.4.5"
   },
   "evidence": {

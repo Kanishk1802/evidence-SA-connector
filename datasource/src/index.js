@@ -1,9 +1,7 @@
 import { default as axios } from "axios";
 import { parse } from "csv-parse/browser/esm";
 import { EvidenceType, TypeFidelity } from "@evidence-dev/db-commons";
-import { temporaryFile } from "tempy";
 import yaml from "js-yaml";
-import fs from "fs";
 
 
 /**
